@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 
 #--------Include modules---------------
@@ -25,8 +25,7 @@ def node():
 		global mapData
 		exploration_goal=PointStamped()
 		rospy.init_node('detector', anonymous=False)
-		# map_topic= rospy.get_param('~map_topic','/robot_1/map')
-		map_topic= '/map'
+		map_topic= rospy.get_param('~map_topic','/robot_1/map')
 		rospy.Subscriber(map_topic, OccupancyGrid, mapCallBack)
 		targetspub = rospy.Publisher('/detected_points', PointStamped, queue_size=10)
 		pub = rospy.Publisher('shapes', Marker, queue_size=10)
