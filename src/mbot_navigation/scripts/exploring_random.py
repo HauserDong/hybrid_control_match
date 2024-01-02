@@ -9,6 +9,71 @@ from geometry_msgs.msg import Pose, PoseWithCovarianceStamped, Point, Quaternion
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal  
 from random import sample  
 from math import pow, sqrt  
+from target_input import *
+
+def cal_path_len(s,g):
+    rospy.wait_for_service('move_base/make_plan')
+
+    make_plan = rospy.ServiceProxy('move_base/make_plan',GetPlan)
+
+    start = PoseStamped()
+    start.header.stamp = rospy.Time.now()
+    start.header.frame_id = 'map'
+    start.pose = s
+
+    goal = PoseStamped()
+    goal.header.stamp = rospy.Time.now()
+    goal.header.frame_id = 'map'
+    goal.pose = g
+
+    tolerance = 0.0
+
+    response = make_plan(start,goal,tolerance)  # call the service
+
+    return len(response.plan.poses)
+
+def resorted(sort_list):
+    # Resort the Target list, especially for those who have the same priority level
+    # input: target list after using sorted function
+    # output: a new target list rearanging those targets with same priority level
+    
+    last_point = Pose(Point(2.000, -2.000, 0.000),  Quaternion(0.000, 0.000, 0.000, 1.000))
+    total_num = len(sort_list)
+    ptr = 0 
+    
+
+    while True:
+        if ptr == total_num:
+            break
+
+        same_prior_list = []
+        prior = sort_list[ptr][1][1]
+
+        while True:
+            if ptr == total_num:
+                break
+
+            if sort_list[ptr][1][1] == prior:
+                goal = sort_list[ptr][1][0]
+                path_len = cal_path_len(last_point,goal)
+
+                same_prior_list.append(sort_list[ptr])
+                same_prior_list[-1][1].append(path_len)
+            else:
+                break
+
+            ptr += 1
+        
+        sort_same_prior_list = sorted(same_prior_list,key=lambda x:x[1][2]) # increasing order
+
+        ptr_start = ptr - len(same_prior_list)
+        ptr_end = ptr
+        j = 0
+        for i in range(ptr_start,ptr_end):
+            sort_list[i] = sort_same_prior_list[j]
+            j += 1
+        
+        last_point = sort_same_prior_list[j-1][1][0]
 
 class NavTest():  
     def __init__(self):  
@@ -27,17 +92,13 @@ class NavTest():
                        'PREEMPTING', 'RECALLING', 'RECALLED',  
                        'LOST']  
  
-        # 设置目标点的位置  
-        # 在rviz中点击 2D Nav Goal 按键，然后单击地图中一点  
-        # 在终端中就会看到该点的坐标信息  
-        locations = dict()  
+        # 获取用户输入的目标位置
+        locations_dict = Get_goal()
+        
+        # 按照优先级从高到底，对目标进行排序
+        sorted_locations = sorted(locations_dict.items(), key=lambda x:x[1][1],reverse=True)
 
-        locations['1'] = Pose(Point(4.589, -0.376, 0.000),  Quaternion(0.000, 0.000, -0.447, 0.894))  
-        locations['2'] = Pose(Point(4.231, -6.050, 0.000),  Quaternion(0.000, 0.000, -0.847, 0.532))  
-        locations['3'] = Pose(Point(-0.674, -5.244, 0.000), Quaternion(0.000, 0.000, 0.000, 1.000))  
-        locations['4'] = Pose(Point(-5.543, -4.779, 0.000), Quaternion(0.000, 0.000, 0.645, 0.764))  
-        locations['5'] = Pose(Point(-4.701, -0.590, 0.000), Quaternion(0.000, 0.000, 0.340, 0.940))  
-        locations['6'] = Pose(Point(2.924, 0.018, 0.000),   Quaternion(0.000, 0.000, 0.000, 1.000))  
+        resorted(sorted_locations)
 
         # 发布控制机器人的消息  
         self.cmd_vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=5)  
@@ -55,11 +116,10 @@ class NavTest():
         initial_pose = PoseWithCovarianceStamped()  
 
         # 保存成功率、运行时间、和距离的变量  
-        n_locations = len(locations)  
+        n_locations = len(sorted_locations)  
         n_goals = 0  
         n_successes = 0  
-        i = n_locations  
-        distance_traveled = 0  
+        i = 0
         start_time = rospy.Time.now()  
         running_time = 0  
         location = ""  
@@ -69,39 +129,15 @@ class NavTest():
         while initial_pose.header.stamp == "":  
             rospy.sleep(1)  
 
-        rospy.loginfo("Starting navigation test")  
+        rospy.loginfo("Starting navigation test")
 
-        # 开始主循环，随机导航  
+        # 开始主循环，按照优先级导航 
         while not rospy.is_shutdown():  
-            # 如果已经走完了所有点，再重新开始排序  
-            if i == n_locations:  
-                i = 0  
-                sequence = sample(locations, n_locations)  
- 
-                # 如果最后一个点和第一个点相同，则跳过  
-                if sequence[0] == last_location:  
-                    i = 1  
+            if i == n_locations:
+                break
 
-            # 在当前的排序中获取下一个目标点  
-            location = sequence[i]  
-
-            # 跟踪行驶距离  
-            # 使用更新的初始位置  
-            if initial_pose.header.stamp == "":  
-                distance = sqrt(pow(locations[location].position.x -   
-                                    locations[last_location].position.x, 2) +  
-                                pow(locations[location].position.y -   
-                                    locations[last_location].position.y, 2))  
-            else:  
-                rospy.loginfo("Updating current pose.")  
-                distance = sqrt(pow(locations[location].position.x -   
-                                    initial_pose.pose.pose.position.x, 2) +  
-                                pow(locations[location].position.y -   
-                                    initial_pose.pose.pose.position.y, 2))  
-                initial_pose.header.stamp = ""  
-
-            # 存储上一次的位置，计算距离  
-            last_location = location  
+            # 在当前的排序中获取下一个目标点 
+            location = sorted_locations[i][0]  
 
             # 计数器加1  
             i += 1  
@@ -109,18 +145,18 @@ class NavTest():
 
             # 设定下一个目标点  
             self.goal = MoveBaseGoal()  
-            self.goal.target_pose.pose = locations[location]  
+            self.goal.target_pose.pose = locations_dict[location][0] 
             self.goal.target_pose.header.frame_id = 'map'  
             self.goal.target_pose.header.stamp = rospy.Time.now()  
 
             # 让用户知道下一个位置  
-            rospy.loginfo("Going to: " + str(location))  
+            rospy.loginfo("Going to: " + str(location)+". Its coordinate is ("+str(locations_dict[location][0].position.x)+","+str(locations_dict[location][0].position.y)+"). Its priority is "+str(locations_dict[location][1]))  
 
             # 向下一个位置进发  
             self.move_base.send_goal(self.goal)  
 
             # 五分钟时间限制  
-            finished_within_time = self.move_base.wait_for_result(rospy.Duration(300))   
+            finished_within_time = self.move_base.wait_for_result(rospy.Duration(300)) 
 
             # 查看是否成功到达  
             if not finished_within_time:  
@@ -131,7 +167,7 @@ class NavTest():
                 if state == GoalStatus.SUCCEEDED:  
                     rospy.loginfo("Goal succeeded!")  
                     n_successes += 1  
-                    distance_traveled += distance  
+                    # distance_traveled += distance  
                     rospy.loginfo("State:" + str(state))  
                 else:  
                   rospy.loginfo("Goal failed with error code: " + str(goal_states[state]))  
@@ -145,8 +181,7 @@ class NavTest():
                           str(n_goals) + " = " +   
                           str(100 * n_successes/n_goals) + "%")  
 
-            rospy.loginfo("Running time: " + str(trunc(running_time, 1)) +   
-                          " min Distance: " + str(trunc(distance_traveled, 1)) + " m")  
+            rospy.loginfo("Running time: " + str(trunc(running_time, 1)))  
 
             rospy.sleep(self.rest_time)  
 
