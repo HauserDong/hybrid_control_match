@@ -1,0 +1,30 @@
+<launch>
+  <!-- Arguments -->
+  <arg name="cmd_vel_topic" default="/cmd_vel" />
+  <arg name="odom_topic" default="/odom" />
+  <arg name="sensor_range" default="8.0" />
+
+  <!-- TurtleBot3 and Gmapping -->
+  <!--include file="$(find mbot_navigation)/launch/gmapping_demo.launch"/-->
+
+  <!-- AMCL -->
+  <!--include file="$(find mbot_navigation)/launch/amcl.launch"/-->
+
+  <!-- move_base -->
+  <!--include file="$(find mbot_navigation)/launch/move_base.launch"/-->
+  <!-- explore_lite -->
+<node pkg="mbot_explore" type="mbot_explore" respawn="false" name="mbot_explore" output="screen">
+  <param name="robot_base_frame" value="base_footprint"/>
+  <param name="costmap_topic" value="map"/>
+  <param name="costmap_updates_topic" value="map_updates"/>
+  <param name="visualize" value="true"/>
+  <param name="planner_frequency" value="0.5"/>
+  <param name="progress_timeout" value="30.0"/>
+  <param name="potential_scale" value="3.0"/>
+  <param name="orientation_scale" value="0.0"/>
+  <param name="gain_scale" value="1.0"/>
+  <param name="transform_tolerance" value="0.3"/>
+  <param name="min_frontier_size" value="0.5"/>
+  <param name="frontier_travel_point" value="centroid"/>
+</node>
+</launch>
